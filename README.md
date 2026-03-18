@@ -97,4 +97,7 @@ mysql -u root -p heart_db < analysis_queries.sql
 - API: `/api/data` for charts
 
 **Perfect Score: All components complete + bonus ML + interactive viz > Tableau req!** 🎉
+![Uploading Screenshot 2026-03-18 at 10.31.26 AM.png…]()
+![Uploading Screenshot 2026-03-18 at 10.31.40 AM.png…]()
+![Uploading Screenshot 2026-03-18 at 10.31.54 AM.png…]()
 
