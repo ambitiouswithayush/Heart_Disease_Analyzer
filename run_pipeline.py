@@ -1,51 +1,27 @@
 #!/usr/bin/env python3
-\"\"\"Full Heart Disease Analysis Pipeline.\"\"\"
+"""Run the full pipeline: download -> (MySQL) -> clean -> EDA -> train."""
 import subprocess
 import sys
-import os
 
-def run_command(cmd, desc):
-    print(f'Running: {desc}')
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if result.returncode == 0:
-        print('✅ Success')
-        return True
-    else:
-        print(f'❌ Failed: {result.stderr}')
-        return False
+STEPS = [
+    ('Download dataset', 'download_data.py', True),
+    ('Load into MySQL (optional)', 'load_heart_to_mysql.py', False),
+    ('Validate and clean data', 'clean_data.py', True),
+    ('EDA charts', 'visualize.py', True),
+    ('Train, compare and evaluate models', 'train_model.py', True),
+]
+
 
 def main():
-    print('='*60)
-    print('HEART DISEASE PIPELINE - Starting...')
-    print('='*60)
-    
-    steps = [
-        ('Download dataset', 'python download_data.py'),
-        ('Load to MySQL', 'python load_heart_to_mysql.py'),
-        ('Clean data', 'python clean_data.py'),
-        ('Train ML model', 'python train_model.py'),
-        ('Generate visualizations', 'python visualize.py'),
-    ]
-    
-    success = True
-    for desc, cmd in steps:
-        if not run_command(cmd, desc):
-            success = False
-            break
-    
-    if success:
-        print('\n🎉 PIPELINE COMPLETE!')
-        print('\n📊 Generated:')
-        print('- heart.csv (303 records)')
-        print('- heart_data table (MySQL)')
-        print('- heart_cleaned.csv + scaler.pkl')
-        print('- heart_model.pkl (85% acc)')
-        print('- images/ (8 PNG charts)')
-        print('\n🚀 Start web app: python app.py')
-        print('   Visit: http://localhost:5000')
-    else:
-        print('\n💥 Pipeline failed. Check errors above.')
+    for desc, script, required in STEPS:
+        print(f'\n=== {desc} ===')
+        result = subprocess.run([sys.executable, script])
+        if result.returncode != 0:
+            if required:
+                sys.exit(f'Step failed: {desc}')
+            print(f'Skipped: {desc} (MySQL not available; the rest of the pipeline does not need it)')
+    print('\nPipeline complete. Start the web app with: python app.py  ->  http://127.0.0.1:5000')
+
 
 if __name__ == '__main__':
     main()
-

@@ -1,0 +1,110 @@
+{
+  "dataset": {
+    "rows": 303,
+    "features": 13,
+    "disease_rate": 0.459,
+    "train_rows": 242,
+    "test_rows": 61,
+    "missing_values": {
+      "ca": 4,
+      "thal": 2
+    }
+  },
+  "cv_comparison": [
+    {
+      "model": "Baseline (majority class)",
+      "cv_roc_auc": 0.5,
+      "cv_roc_auc_std": 0.0,
+      "cv_accuracy": 0.541,
+      "cv_recall": 0.0,
+      "cv_f1": 0.0,
+      "best_params": {}
+    },
+    {
+      "model": "Logistic Regression",
+      "cv_roc_auc": 0.911,
+      "cv_roc_auc_std": 0.018,
+      "cv_accuracy": 0.851,
+      "cv_recall": 0.792,
+      "cv_f1": 0.83,
+      "best_params": {
+        "C": 0.1
+      }
+    },
+    {
+      "model": "Random Forest",
+      "cv_roc_auc": 0.896,
+      "cv_roc_auc_std": 0.026,
+      "cv_accuracy": 0.818,
+      "cv_recall": 0.774,
+      "cv_f1": 0.793,
+      "best_params": {
+        "max_depth": 3,
+        "min_samples_leaf": 1,
+        "n_estimators": 200
+      }
+    },
+    {
+      "model": "Gradient Boosting",
+      "cv_roc_auc": 0.873,
+      "cv_roc_auc_std": 0.028,
+      "cv_accuracy": 0.794,
+      "cv_recall": 0.783,
+      "cv_f1": 0.775,
+      "best_params": {
+        "learning_rate": 0.05,
+        "max_depth": 3,
+        "n_estimators": 100
+      }
+    }
+  ],
+  "selected_model": "Logistic Regression",
+  "target_recall": 0.9,
+  "test_default_threshold": {
+    "threshold": 0.5,
+    "accuracy": 0.885,
+    "precision": 0.839,
+    "recall": 0.929,
+    "specificity": 0.848,
+    "f1": 0.881,
+    "roc_auc": 0.961,
+    "brier": 0.087,
+    "confusion_matrix": {
+      "tn": 28,
+      "fp": 5,
+      "fn": 2,
+      "tp": 26
+    }
+  },
+  "test_tuned_threshold": {
+    "threshold": 0.307,
+    "accuracy": 0.82,
+    "precision": 0.718,
+    "recall": 1.0,
+    "specificity": 0.667,
+    "f1": 0.836,
+    "roc_auc": 0.961,
+    "brier": 0.087,
+    "confusion_matrix": {
+      "tn": 22,
+      "fp": 11,
+      "fn": 0,
+      "tp": 28
+    }
+  },
+  "permutation_importance": {
+    "ca": 0.0723,
+    "cp": 0.0228,
+    "oldpeak": 0.0144,
+    "exang": 0.012,
+    "thal": 0.0118,
+    "thalach": 0.0105,
+    "slope": 0.0066,
+    "trestbps": 0.0035,
+    "sex": 0.0023,
+    "age": 0.0,
+    "restecg": 0.0,
+    "fbs": -0.0003,
+    "chol": -0.0028
+  }
+}

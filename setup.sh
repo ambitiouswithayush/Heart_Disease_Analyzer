@@ -1,22 +1,7 @@
 #!/bin/bash
-# Heart Disease Project Setup & Run
-
-echo \"🚀 Setting up Heart Disease Analysis Project...\"
-
-# Install dependencies
-echo \"📦 Installing Python dependencies...\"
-pip install -r requirements.txt
-
-# Download data and run pipeline
-echo \"⬇️  Downloading data & running pipeline...\"
-python download_data.py
-python run_pipeline.py
-
-echo \"\n✅ Setup complete!\"
-echo \"🌐 Start web app: python app.py\"
-echo \"📱 Visit: http://localhost:5000/\"
-echo \"🔮 ML Predict: http://localhost:5000/predict\"
-echo \"📊 MySQL: mysql -u root -p heart_db < analysis_queries.sql\"
-
-echo \"\nRun 'python app.py' to start the interactive dashboard!\"
-
+# One-command setup: install dependencies, run the pipeline and the tests
+set -e
+python3 -m pip install -r requirements.txt
+python3 run_pipeline.py
+python3 -m pytest -q
+echo "Done. Start the app with: python3 app.py  ->  http://127.0.0.1:5000"

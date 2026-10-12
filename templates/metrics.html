@@ -1,50 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Performance Metrics</title>
-    <link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css\" rel=\"stylesheet\">
+    <title>Model Metrics</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class=\"container mt-5\">
-    <h1>📊 Project Performance Metrics</h1>
-    <div class=\"row\">
-        <div class=\"col-md-6\">
-            <h3>Dataset</h3>
-            <ul>
-                <li><strong>Raw Records:</strong> {{ metrics.records_total }}</li>
-                <li><strong>Cleaned Records:</strong> {{ metrics.records_cleaned }}</li>
-                <li><strong>Features:</strong> {{ metrics.features }}</li>
-                <li><strong>Disease Rate:</strong> {{ '%.1f%%' % (metrics.disease_rate*100) if 'disease_rate' in metrics else 'N/A' }}</li>
-            </ul>
-        </div>
-        <div class=\"col-md-6\">
-            <h3>ML Model</h3>
-            <ul>
-                <li><strong>Accuracy:</strong> {{ metrics.ml_accuracy }}</li>
-                <li><strong>Type:</strong> {{ metrics.model_type }}</li>
-            </ul>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8">
+<div class="max-w-5xl mx-auto space-y-6">
+    <div class="flex flex-wrap justify-between items-center gap-4">
+        <h1 class="text-3xl font-bold text-slate-800">Model metrics</h1>
+        <div class="flex gap-2">
+            <a href="/dashboard" class="bg-white border border-slate-300 hover:bg-slate-100 px-4 py-2 rounded-lg font-semibold">Dashboard</a>
+            <a href="/predict" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold">Predictor</a>
         </div>
     </div>
-    <div class=\"row mt-4\">
-        <div class=\"col-md-6\">
-            <h3>Visualizations & Analysis</h3>
-            <ul>
-                <li><strong>Python Charts:</strong> {{ metrics.python_viz }}</li>
-                <li><strong>SQL Queries:</strong> {{ metrics.sql_queries }}</li>
-                <li><strong>DB Records:</strong> {{ metrics.db_records }}</li>
-            </ul>
-        </div>
-        <div class=\"col-md-6\">
-            <h3>Web App</h3>
-            <ul>
-                <li><strong>Filters:</strong> {{ metrics.filters_web }}</li>
-                <li><strong>Calculated Fields:</strong> {{ metrics.calc_fields }}</li>
-            </ul>
-        </div>
-    </div>
-    <div class=\"mt-4\">
-        <a href=\"/dashboard\" class=\"btn btn-primary\">Dashboard</a>
-        <a href=\"/predict\" class=\"btn btn-success\">Predict</a>
-    </div>
+
+    <section class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-xl font-bold mb-2">Dataset</h2>
+        <p>{{ m.dataset.rows }} patients · {{ m.dataset.features }} features · disease rate {{ '%.1f' % (m.dataset.disease_rate * 100) }}% ·
+           train {{ m.dataset.train_rows }} / test {{ m.dataset.test_rows }} (stratified) ·
+           missing values imputed inside the pipeline: {{ m.dataset.missing_values }}</p>
+    </section>
+
+    <section class="bg-white rounded-xl shadow p-6 overflow-x-auto">
+        <h2 class="text-xl font-bold mb-2">Model comparison (5-fold cross-validation on the training set)</h2>
+        <table class="w-full text-sm">
+            <thead><tr class="text-left border-b"><th class="py-2">Model</th><th>ROC-AUC</th><th>Accuracy</th><th>Recall</th><th>F1</th><th>Best params</th></tr></thead>
+            <tbody>
+            {% for r in m.cv_comparison %}
+            <tr class="border-b {{ 'bg-indigo-50 font-semibold' if r.model == m.selected_model }}">
+                <td class="py-2">{{ r.model }}</td><td>{{ r.cv_roc_auc }} ± {{ r.cv_roc_auc_std }}</td><td>{{ r.cv_accuracy }}</td>
+                <td>{{ r.cv_recall }}</td><td>{{ r.cv_f1 }}</td><td class="text-xs">{{ r.best_params }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="bg-white rounded-xl shadow p-6 overflow-x-auto">
+        <h2 class="text-xl font-bold mb-2">Held-out test set: {{ m.selected_model }}</h2>
+        <table class="w-full text-sm">
+            <thead><tr class="text-left border-b"><th class="py-2">Threshold</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>Specificity</th><th>F1</th><th>ROC-AUC</th><th>Missed patients (FN)</th><th>False alarms (FP)</th></tr></thead>
+            <tbody>
+            {% for t in [m.test_default_threshold, m.test_tuned_threshold] %}
+            <tr class="border-b"><td class="py-2">{{ t.threshold }}</td><td>{{ t.accuracy }}</td><td>{{ t.precision }}</td><td>{{ t.recall }}</td>
+                <td>{{ t.specificity }}</td><td>{{ t.f1 }}</td><td>{{ t.roc_auc }}</td><td>{{ t.confusion_matrix.fn }}</td><td>{{ t.confusion_matrix.fp }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="text-sm text-slate-500 mt-2">The tuned threshold was chosen from out-of-fold training predictions to reach ≥{{ '%.0f' % (m.target_recall * 100) }}% recall, never from the test set.</p>
+    </section>
+
+    <section class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-xl font-bold mb-2">Permutation feature importance (drop in test ROC-AUC)</h2>
+        <ul class="text-sm space-y-1">
+            {% for f, v in m.permutation_importance.items() %}
+            <li class="flex items-center gap-2"><span class="w-72">{{ descriptions[f] }}</span>
+                <span class="bg-indigo-500 h-3 rounded" style="width: {{ [v * 2000, 2]|max }}px"></span><span>{{ v }}</span></li>
+            {% endfor %}
+        </ul>
+    </section>
+</div>
 </body>
 </html>
-

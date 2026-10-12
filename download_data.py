@@ -1,41 +1,41 @@
 #!/usr/bin/env python3
-import requests
+"""Download the UCI Cleveland Heart Disease dataset (303 records)."""
 import os
+import requests
 
-def download_heart_dataset():
-    """Download UCI Heart Disease dataset (heart.csv) - 303 records."""
-    url = 'https://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data'
-    
-    filename = 'heart.csv'
-    if os.path.exists(filename):
-        print(f'{filename} already exists. Size: {os.path.getsize(filename)} bytes')
+from config import RAW_CSV
+
+URL = 'https://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data'
+HEADER = 'age,sex,cp,trestbps,chol,fbs,restecg,thalach,exang,oldpeak,slope,ca,thal,target'
+
+
+def download_heart_dataset(force=False):
+    """Save the raw file as CSV.
+
+    - Missing values ('?') are kept as empty cells so they can be imputed
+      later *inside* the model pipeline (dropping them would lose 6 patients).
+    - The original target is 0-4 (disease severity); it is binarised to
+      0 = no disease, 1 = disease (any severity).
+    """
+    if os.path.exists(RAW_CSV) and not force:
+        print(f'{RAW_CSV} already exists. Use force=True to re-download.')
         return
-    
-    print('Downloading heart.csv from UCI repository...')
-    try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        
-        # Parse UCI format (no header, 14 cols incl target as 0-4 -> 0/1 binary)
-        lines = response.text.strip().split('\n')
-        data = []
-        for line in lines:
-            if '?' not in line:  # Skip missing values for simplicity
-                row = line.split(',')
-                row[-1] = '1' if int(float(row[-1])) > 0 else '0'  # Binary target
-                data.append(','.join(row))
-        
-        with open(filename, 'w') as f:
-            # Header
-            f.write('age,sex,cp,trestbps,chol,fbs,restecg,thalach,exang,oldpeak,slope,ca,thal,target\n')
-            f.write('\n'.join(data))
-        
-        print(f'✅ Downloaded {len(data)} clean records to {filename}')
-        
-    except Exception as e:
-        print(f'❌ Download failed: {e}')
-        print('Alternative: Manual download from https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset')
+
+    print('Downloading UCI Cleveland heart disease data...')
+    response = requests.get(URL, timeout=30)
+    response.raise_for_status()
+
+    rows = []
+    for line in response.text.strip().splitlines():
+        values = ['' if v.strip() == '?' else v.strip() for v in line.split(',')]
+        values[-1] = '1' if int(float(values[-1])) > 0 else '0'
+        rows.append(','.join(values))
+
+    with open(RAW_CSV, 'w') as f:
+        f.write(HEADER + '\n' + '\n'.join(rows) + '\n')
+
+    print(f'Saved {len(rows)} records to {RAW_CSV}')
+
 
 if __name__ == '__main__':
-    download_heart_dataset()
-
+    download_heart_dataset(force=True)

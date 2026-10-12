@@ -1,76 +1,56 @@
+"""Validate and tidy the raw data.
+
+This step deliberately does NOT impute or scale. Imputation and scaling learn
+statistics (median, mean, std) from the data, so they must be fitted on the
+training split only. They live inside the sklearn Pipeline in train_model.py.
+Doing them here, on the full dataset, would leak test-set information into
+training (the bug in the first version of this project).
+"""
 import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler
-import os
-import joblib
 
-FEATURES = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 
-            'exang', 'oldpeak', 'slope', 'ca', 'thal']
-TARGET = 'target'
+from config import CATEGORICAL, CATEGORY_LABELS, CLEAN_CSV, FEATURES, NUMERIC_RANGES, RAW_CSV, TARGET
 
-def clean_heart_data(input_csv='heart.csv', output_csv='heart_cleaned.csv'):
-    """Clean heart disease dataset:
-    - Handle missing values (drop rows with NaN, fill common cases)
-    - Convert categorical columns (already numeric in standard dataset)
-    - Normalize numerical features using StandardScaler
-    """
-    if not os.path.exists(input_csv):
-        print(f'{input_csv} not found!')
-        return
-    
-    print('Loading data...')
+
+def clean_heart_data(input_csv=RAW_CSV, output_csv=CLEAN_CSV):
     df = pd.read_csv(input_csv)
-    
-    # Verify columns
-    expected_cols = FEATURES + [TARGET]
-    missing_cols = [col for col in expected_cols if col not in df.columns]
+
+    missing_cols = [c for c in FEATURES + [TARGET] if c not in df.columns]
     if missing_cols:
-        print(f'Missing columns: {missing_cols}')
-        return
-    
-    df = df[expected_cols]
-    
-    print('Original shape:', df.shape)
-    
-    # 1. Handle missing values
-    print('Handling missing values...')
-    nan_count = df.isnull().sum()
-    if nan_count.any():
-        print('NaNs per column:\n', nan_count[nan_count > 0])
-        # For ca and thal (common missing in UCI), fill mode
-        for col in ['ca', 'thal']:
-            if df[col].isnull().sum() > 0:
-                df[col] = df[col].fillna(df[col].mode()[0])
-        # Drop remaining rows with NaN
-        df = df.dropna()
-    else:
-        print('No missing values found.')
-    
-    print('After missing values handling:', df.shape)
-    
-    # 2. Categorical columns (ensure int)
-    categorical = ['sex', 'cp', 'fbs', 'restecg', 'exang', 'slope', 'ca', 'thal']
-    for col in categorical:
-        df[col] = df[col].astype(int)
-    
-    # 3. Normalize numerical columns
-    print('Normalizing numerical features...')
-    numerical = ['age', 'trestbps', 'chol', 'thalach', 'oldpeak']
-    scaler = StandardScaler()
-    df[numerical] = scaler.fit_transform(df[numerical])
-    
-    # Save scaler for later use
-    joblib.dump(scaler, 'scaler.pkl')
-    
-    # Save cleaned data
+        raise ValueError(f'Missing columns: {missing_cols}')
+    df = df[FEATURES + [TARGET]]
+    print('Raw shape:', df.shape)
+
+    # 1. Exact duplicate rows
+    dupes = df.duplicated().sum()
+    df = df.drop_duplicates()
+    print(f'Duplicates removed: {dupes}')
+
+    # 2. Missing values: report only (imputed later, inside the pipeline)
+    nans = df.isnull().sum()
+    print('Missing values per column:\n', nans[nans > 0].to_string() if nans.any() else 'none')
+
+    # 3. Categorical columns: nullable integer, unknown codes -> missing
+    for col in CATEGORICAL:
+        df[col] = df[col].round().astype('Int64')
+        bad = ~df[col].isna() & ~df[col].isin(CATEGORY_LABELS[col].keys())
+        if bad.any():
+            print(f'{col}: {bad.sum()} unknown codes set to missing')
+            df.loc[bad, col] = pd.NA
+
+    # 4. Numeric columns: physiologically impossible values -> missing
+    for col, (lo, hi) in NUMERIC_RANGES.items():
+        bad = df[col].notna() & ~df[col].between(lo, hi)
+        if bad.any():
+            print(f'{col}: {bad.sum()} out-of-range values set to missing')
+            df.loc[bad, col] = float('nan')
+
+    df[TARGET] = df[TARGET].astype(int)
+
     df.to_csv(output_csv, index=False)
-    print(f'Cleaned data saved to {output_csv}')
-    print('Cleaning complete!')
-    
-    # Summary stats
-    print('\nSummary after cleaning:')
-    print(df.describe())
+    print(f'Clean shape: {df.shape}, disease rate: {df[TARGET].mean():.1%}')
+    print(f'Saved to {output_csv}')
+    return df
+
 
 if __name__ == '__main__':
     clean_heart_data()
-

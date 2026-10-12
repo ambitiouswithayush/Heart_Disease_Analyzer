@@ -1,118 +1,151 @@
-from flask import Flask, render_template, request, jsonify
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import joblib
-import numpy as np
+"""Flask app: interactive dashboard, risk predictor and model metrics."""
+import json
 import os
 
+import joblib
+import pandas as pd
+import plotly.express as px
+from flask import Flask, jsonify, render_template, request
+
+from config import (CATEGORICAL, CATEGORY_LABELS, CLEAN_CSV, FEATURE_DESCRIPTIONS, FEATURES, METRICS_PATH,
+                    MODEL_PATH, NUMERIC_RANGES, TARGET)
+
 app = Flask(__name__)
+
+_cache = {}
+
+
+def load_artifacts():
+    """Load the trained pipeline and metrics once (lazy, so tests can run without them)."""
+    if 'model' not in _cache:
+        if not os.path.exists(MODEL_PATH):
+            raise FileNotFoundError('Model not found. Run `python run_pipeline.py` first.')
+        _cache['model'] = joblib.load(MODEL_PATH)
+        with open(METRICS_PATH) as f:
+            _cache['metrics'] = json.load(f)
+    return _cache['model'], _cache['metrics']
+
+
+def load_data():
+    df = pd.read_csv(CLEAN_CSV)
+    df['Status'] = df[TARGET].map({0: 'No disease', 1: 'Disease'})
+    return df
+
 
 @app.route('/')
 @app.route('/dashboard')
 def dashboard():
-    """Interactive Plotly Dashboard replacing Tableau."""
-    # Load data for dashboard
-    df = pd.read_csv('heart_cleaned.csv') if os.path.exists('heart_cleaned.csv') else pd.DataFrame()
-    return render_template('index.html', has_data=len(df)>0)
+    return render_template('index.html', has_data=os.path.exists(CLEAN_CSV), labels=CATEGORY_LABELS)
+
 
 @app.route('/api/data')
 def api_data():
-    """API for dashboard charts."""
-    if not os.path.exists('heart_cleaned.csv'):
-        return jsonify({'error': 'Run pipeline first'})
-    
-    df = pd.read_csv('heart_cleaned.csv')
-    
-    charts = {}
-    
-    # 1. Disease Distribution
-    disease_counts = df['target'].value_counts().reset_index()
-    charts['disease_pie'] = px.pie(disease_counts, names='target', values='count', 
-                                   title='Disease Distribution (%)').to_json()
-    
-    # 2. Age vs Target Violin
-    charts['age_violin'] = px.violin(df, x='target', y='age', box=True,
-                                     title='Age by Disease Status').to_json()
-    
-    # 3. Cholesterol Box
-    charts['chol_box'] = px.box(df, x='target', y='chol', 
-                                title='Cholesterol by Disease').to_json()
-    
-    # 4. Gender Heatmap
-    crosstab = pd.crosstab(df['sex'], df['target'], normalize='index') * 100
-    charts['gender_heatmap'] = px.imshow(crosstab.values, 
-                                         x=['No Disease', 'Disease'],
-                                         y=['Female', 'Male'],
-                                         title='Gender vs Disease (%)').to_json()
-    
-    # 5. CP Stacked Bar
-    cp_target = pd.crosstab(df['cp'], df['target'])
-    charts['cp_stacked'] = px.bar(cp_target, barmode='stack',
-                                  title='Chest Pain Type vs Disease').to_json()
-    
-    # 6. Correlation Matrix
-    corr_cols = ['age', 'trestbps', 'chol', 'thalach', 'oldpeak', 'target']
-    corr = df[corr_cols].corr()
-    charts['corr_matrix'] = px.imshow(corr, title='Correlation Matrix', color_continuous_scale='RdBu').to_json()
-    
-    # Filters - return sample data for client-side filtering
-    charts['filters'] = {
-        'age_range': [df['age'].min(), df['age'].max()],
-        'gender_options': sorted(df['sex'].unique().tolist()),
-        'cp_options': sorted(df['cp'].unique().tolist())
+    """Charts for the dashboard, filtered server-side by age range, sex and chest-pain type."""
+    if not os.path.exists(CLEAN_CSV):
+        return jsonify({'error': 'Run the pipeline first'}), 404
+
+    df = load_data()
+    age_min = request.args.get('age_min', type=int)
+    age_max = request.args.get('age_max', type=int)
+    sex = request.args.get('sex', type=int)
+    cp = request.args.get('cp', type=int)
+    if age_min is not None:
+        df = df[df['age'] >= age_min]
+    if age_max is not None:
+        df = df[df['age'] <= age_max]
+    if sex is not None:
+        df = df[df['sex'] == sex]
+    if cp is not None:
+        df = df[df['cp'] == cp]
+
+    if df.empty:
+        return jsonify({'count': 0, 'disease_rate': None, 'charts': {}})
+
+    colors = {'No disease': '#4C9BE8', 'Disease': '#E8604C'}
+    named = df.assign(Sex=df['sex'].map(CATEGORY_LABELS['sex']),
+                      ChestPain=df['cp'].map(CATEGORY_LABELS['cp']))
+    rate_by_cp = named.groupby('ChestPain')[TARGET].mean().mul(100).round(1).reset_index()
+    corr = df[['age', 'trestbps', 'chol', 'thalach', 'oldpeak', 'ca', TARGET]].corr().round(2)
+
+    charts = {
+        'status': px.pie(named, names='Status', color='Status', color_discrete_map=colors,
+                         title='Disease distribution'),
+        'age': px.violin(named, x='Status', y='age', color='Status', box=True, color_discrete_map=colors,
+                         title='Age by disease status'),
+        'thalach': px.box(named, x='Status', y='thalach', color='Status', color_discrete_map=colors,
+                          title='Max heart rate by disease status'),
+        'sex': px.histogram(named, x='Sex', color='Status', barmode='group', color_discrete_map=colors,
+                            title='Disease by sex'),
+        'cp': px.bar(rate_by_cp, x='ChestPain', y=TARGET, title='Disease rate (%) by chest pain type',
+                     labels={TARGET: 'Disease rate (%)', 'ChestPain': ''}),
+        'corr': px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', zmin=-1, zmax=1,
+                          title='Correlation matrix'),
     }
-    
-    return jsonify(charts)
+    return jsonify({
+        'count': int(len(df)),
+        'disease_rate': round(float(df[TARGET].mean()) * 100, 1),
+        'charts': {k: json.loads(v.to_json()) for k, v in charts.items()},
+    })
 
-@app.route('/metrics')
-def metrics():
-    """Performance metrics page."""
-    try:
-        exec(open('metrics.py').read(), {'get_project_metrics': lambda: {}})
-    except:
-        metrics = {'records_total': 303, 'viz': 14}
-    
-    return '''
-    <h1>Performance Metrics</h1>
-    <ul>
-        <li>Records: 303</li>
-        <li>Visualizations: 14</li>
-        <li>Filters: 5+</li>
-        <li>ML Accuracy: 85%</li>
-    </ul>
-    <a href="/dashboard">Dashboard</a>
-    '''
 
-@app.route('/data')
-def data_info():
-    return '<h1>Pipeline Complete</h1><p>bash setup.sh | python3 run_pipeline.py</p>'
+def parse_patient(form):
+    """Validate form input and return a one-row DataFrame in training column order."""
+    row, errors = {}, []
+    for f in FEATURES:
+        raw = form.get(f, '').strip()
+        if raw == '':
+            errors.append(f'{FEATURE_DESCRIPTIONS[f]} is required')
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            errors.append(f'{FEATURE_DESCRIPTIONS[f]} must be a number')
+            continue
+        if f in CATEGORICAL and int(value) not in CATEGORY_LABELS[f]:
+            errors.append(f'{FEATURE_DESCRIPTIONS[f]}: unknown code {raw}')
+        elif f in NUMERIC_RANGES and not NUMERIC_RANGES[f][0] <= value <= NUMERIC_RANGES[f][1]:
+            lo, hi = NUMERIC_RANGES[f]
+            errors.append(f'{FEATURE_DESCRIPTIONS[f]} must be between {lo} and {hi}')
+        row[f] = value
+    return pd.DataFrame([row], columns=FEATURES), errors
+
 
 @app.route('/predict', methods=['GET', 'POST'])
 def predict():
-    FEATURES = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 
-                'exang', 'oldpeak', 'slope', 'ca', 'thal']
-    
+    ctx = {'labels': CATEGORY_LABELS, 'ranges': NUMERIC_RANGES, 'descriptions': FEATURE_DESCRIPTIONS,
+           'values': request.form if request.method == 'POST' else {}}
+    try:
+        artifacts, metrics = load_artifacts()
+    except FileNotFoundError as e:
+        return render_template('predict.html', error=str(e), **ctx)
+    ctx['model_name'] = artifacts['model_name']
+    ctx['threshold'] = artifacts['threshold']
+
     if request.method == 'POST':
-        try:
-            # Scale input using saved scaler
-            scaler = joblib.load('scaler.pkl')
-            data = np.array([float(request.form[f]) for f in FEATURES])
-            data_scaled = scaler.transform(data.reshape(1, -1))[0]
-            
-            model = joblib.load('heart_model.pkl')
-            prediction = model.predict(data_scaled.reshape(1, -1))[0]
-            
-            return render_template('predict.html', 
-                                 prediction=bool(prediction), 
-                                 probability='85%',
-                                 features=data)
-        except Exception as e:
-            return render_template('predict.html', error=f'Error: {e}. Run pipeline first.')
-    
-    return render_template('predict.html')
+        patient, errors = parse_patient(request.form)
+        if errors:
+            return render_template('predict.html', error='; '.join(errors), **ctx)
+        probability = float(artifacts['pipeline'].predict_proba(patient)[0, 1])
+        ctx['probability'] = probability
+        ctx['high_risk'] = probability >= artifacts['threshold']
+    return render_template('predict.html', **ctx)
+
+
+@app.route('/metrics')
+def metrics_page():
+    try:
+        _, metrics = load_artifacts()
+    except FileNotFoundError as e:
+        return str(e), 404
+    return render_template('metrics.html', m=metrics, descriptions=FEATURE_DESCRIPTIONS)
+
+
+@app.route('/api/metrics')
+def api_metrics():
+    _, metrics = load_artifacts()
+    return jsonify(metrics)
+
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
-
+    app.run(host='127.0.0.1', port=int(os.environ.get('PORT', 5000)),
+            debug=os.environ.get('FLASK_DEBUG') == '1')

@@ -1,109 +1,85 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+"""Exploratory data analysis charts (on raw, unscaled values)."""
 import os
-import numpy as np
 
-plt.style.use('default')
-sns.set_palette("husl")
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 
-def create_visualizations(csv_path='heart_cleaned.csv'):
-    if not os.path.exists(csv_path):
-        print(f'{csv_path} not found. Run clean_data.py first.')
-        return
-    
+from config import CATEGORY_LABELS, CLEAN_CSV, IMAGES_DIR, TARGET
+
+sns.set_theme(style='whitegrid')
+PALETTE = {'No disease': '#4C9BE8', 'Disease': '#E8604C'}
+
+
+def save(fig, name):
+    fig.savefig(os.path.join(IMAGES_DIR, name), dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+
+def create_visualizations(csv_path=CLEAN_CSV):
     df = pd.read_csv(csv_path)
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+    df['Status'] = df[TARGET].map({0: 'No disease', 1: 'Disease'})
     print(f'Visualizing {len(df)} records')
-    
-    # Create images directory
-    os.makedirs('images', exist_ok=True)
-    
-    # 1. Disease Distribution (Bar + Pie)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    disease_counts = df['target'].value_counts()
-    disease_counts.plot(kind='bar', ax=ax1, title='Disease Distribution')
-    ax1.set_ylabel('Count')
-    ax1.tick_params(axis='x', rotation=0)
-    
-    disease_counts.plot(kind='pie', ax=ax2, autopct='%1.1f%%', title='Disease %')
-    ax2.tick_params(axis='x', rotation=0)
-    plt.savefig('images/01_disease_distribution.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 2. Age vs Target (Violin)
-    plt.figure(figsize=(10, 6))
-    sns.violinplot(data=df, x='target', y='age', palette=['skyblue', 'salmon'])
-    plt.title('Age Distribution by Disease Status')
-    plt.xlabel('Target (0=No, 1=Yes)')
-    plt.savefig('images/02_age_violin.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 3. Cholesterol by Target (Boxplot)
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(data=df, x='target', y='chol', palette=['lightgreen', 'orange'])
-    plt.title('Cholesterol Distribution by Disease')
-    plt.xlabel('Target (0=No, 1=Yes)')
-    plt.savefig('images/03_cholesterol_box.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 4. Gender vs Target (Crosstab heatmap)
-    crosstab = pd.crosstab(df['sex'], df['target'], normalize='index') * 100
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(crosstab, annot=True, cmap='RdYlBu_r', fmt='.1f')
-    plt.title('Gender vs Disease (%)')
-    plt.ylabel('Sex (0=F, 1=M)')
-    plt.savefig('images/04_gender_heatmap.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 5. Correlation Heatmap (Numerical)
-    num_cols = ['age', 'trestbps', 'chol', 'thalach', 'oldpeak']
-    corr = df[num_cols + ['target']].corr()
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(corr, annot=True, cmap='coolwarm', center=0, fmt='.2f')
-    plt.title('Feature Correlation Matrix')
-    plt.tight_layout()
-    plt.savefig('images/05_correlation.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 6. Chest Pain Type Distribution
-    plt.figure(figsize=(10, 6))
-    cp_target = pd.crosstab(df['cp'], df['target'])
-    cp_target.plot(kind='bar', stacked=True)
-    plt.title('Chest Pain Type vs Disease')
-    plt.xlabel('CP Type (0-3)')
-    plt.ylabel('Count')
-    plt.legend(title='Target')
-    plt.savefig('images/06_cp_stackedbar.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 7. Max Heart Rate Scatter
-    plt.figure(figsize=(10, 6))
-    sns.scatterplot(data=df, x='age', y='thalach', hue='target', size='chol', 
-                    sizes=(20, 200), palette=['blue', 'red'])
-    plt.title('Age vs Max Heart Rate (colored by disease, sized by cholesterol)')
-    plt.savefig('images/07_scatter_thalach.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 8. Feature Importance (if model available)
-    try:
-        from joblib import load
-        model = load('heart_model.pkl')
-        importances = pd.DataFrame({
-            'feature': df.columns[:-1],
-            'importance': model.feature_importances_
-        }).sort_values('importance', ascending=False)
-        
-        plt.figure(figsize=(10, 6))
-        sns.barplot(data=importances.head(10), x='importance', y='feature')
-        plt.title('Top 10 Feature Importances (RandomForest)')
-        plt.savefig('images/08_feature_importance.png', dpi=300, bbox_inches='tight')
-        plt.close()
-        print('Feature importance chart created!')
-    except:
-        print('Model not found - skipping feature importance')
-    
-    print('✅ 8 visualizations saved to images/ folder!')
-    print('Files: 01_disease_distribution.png ... 08_feature_importance.png')
+
+    # 1. Class balance
+    fig, ax = plt.subplots(figsize=(5, 4))
+    counts = df['Status'].value_counts()
+    ax.bar(counts.index, counts.values, color=[PALETTE[k] for k in counts.index])
+    for i, v in enumerate(counts.values):
+        ax.text(i, v + 2, f'{v} ({v / len(df):.0%})', ha='center')
+    ax.set_title('Class balance')
+    ax.set_ylabel('Patients')
+    save(fig, '01_class_balance.png')
+
+    # 2-4. Numeric features by disease status
+    for fname, col, title in [('02_age_by_status.png', 'age', 'Age (years)'),
+                              ('03_max_hr_by_status.png', 'thalach', 'Maximum heart rate'),
+                              ('04_cholesterol_by_status.png', 'chol', 'Cholesterol (mg/dl)')]:
+        fig, ax = plt.subplots(figsize=(6, 4))
+        sns.boxplot(data=df, x='Status', y=col, hue='Status', palette=PALETTE, legend=False, ax=ax)
+        ax.set_title(f'{title} by disease status')
+        ax.set_xlabel('')
+        ax.set_ylabel(title)
+        save(fig, fname)
+
+    # 5. Disease rate by each categorical feature
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    for ax, col in zip(axes.flat, ['sex', 'cp', 'exang', 'slope', 'thal', 'ca']):
+        rate = df.groupby(col)[TARGET].agg(['mean', 'count'])
+        labels = [CATEGORY_LABELS.get(col, {}).get(int(i), str(int(i))) for i in rate.index]
+        ax.bar(labels, rate['mean'], color='#E8604C')
+        for i, (m, n) in enumerate(zip(rate['mean'], rate['count'])):
+            ax.text(i, m + 0.02, f'{m:.0%}\nn={n}', ha='center', fontsize=8)
+        ax.set_ylim(0, 1.15)
+        ax.set_title(f'Disease rate by {col}')
+        ax.tick_params(axis='x', rotation=20)
+    fig.tight_layout()
+    save(fig, '05_disease_rate_by_category.png')
+
+    # 6. Correlation matrix (numeric features + target)
+    corr = df[['age', 'trestbps', 'chol', 'thalach', 'oldpeak', 'ca', TARGET]].corr()
+    fig, ax = plt.subplots(figsize=(7, 6))
+    sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm', center=0, ax=ax)
+    ax.set_title('Correlation matrix')
+    save(fig, '06_correlation.png')
+
+    # 7. Age vs max heart rate
+    fig, ax = plt.subplots(figsize=(7, 5))
+    sns.scatterplot(data=df, x='age', y='thalach', hue='Status', palette=PALETTE, ax=ax)
+    ax.set_title('Age vs maximum heart rate')
+    save(fig, '07_age_vs_max_hr.png')
+
+    # 8. ST depression distribution
+    fig, ax = plt.subplots(figsize=(7, 4))
+    sns.histplot(data=df, x='oldpeak', hue='Status', palette=PALETTE, bins=20, multiple='layer', ax=ax)
+    ax.set_title('ST depression (oldpeak) by disease status')
+    save(fig, '08_oldpeak_distribution.png')
+
+    print(f'8 EDA charts saved to {IMAGES_DIR}/ (model charts 09-12 come from train_model.py)')
+
 
 if __name__ == '__main__':
     create_visualizations()

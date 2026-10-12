@@ -1,66 +1,25 @@
-# Complete Heart Disease Analysis Insights 📊
+# Insights
 
-## 🎯 **Executive Summary**
-**303 patient records** → **85% accurate ML predictor** → **Interactive web dashboard**
+All figures come from `heart.csv` (303 patients) and `artifacts/metrics.json`.
 
-**Key Finding**: 54.5% disease prevalence (165/303)
+## 1. Who has heart disease?
+- **Prevalence:** 139 / 303 = 45.9%. Classes are roughly balanced, so accuracy is meaningful, but recall still matters most.
+- **Sex:** 55% of men vs 26% of women.
+- **Chest pain:** *asymptomatic* patients (type 4) have a 73% disease rate, much higher than typical angina (30%). Silent disease is common in this referral population.
+- **Blocked vessels (`ca`):** 26% → 68% → 82% → 85% for 0 → 3 vessels, a near-monotonic dose-response.
+- **Exercise angina:** 77% if present vs 31% if absent.
+- **Thallium test:** reversible defect 76%, fixed defect 67%, normal 22%.
 
-## Top Insights (Updated w/ Interactive Dashboard)
+## 2. What doesn't matter much?
+- **Cholesterol** (252 vs 243 mg/dl) and **fasting blood sugar** add almost nothing once other features are known (permutation importance ≈ 0).
+- **Age** matters on its own (57 vs 53 years), but adds little once vessels and heart rate are known, because they already capture age-related decline.
 
-### 1. **Gender Disparity** 🔥
-```
-Males: 68% disease rate (142/206)
-Females: 37% disease rate (23/97) 
-```
-*Dashboard heatmap shows real-time filtering*
+## 3. Model
+- Logistic Regression (C = 0.1) had the best CV ROC-AUC, 0.911 ± 0.018, beating Random Forest (0.896) and Gradient Boosting (0.873).
+- Largest odds multipliers from the coefficients (numeric features per +1 standard deviation; categories relative to the average category): blocked vessels ×2.0, asymptomatic chest pain ×1.7, reversible thal defect ×1.65, male ×1.5; higher max heart rate ×0.73 (protective).
+- At the tuned threshold (0.31) the model missed **0 of 28** sick patients in the test set, at the cost of 11 false alarms out of 33 healthy patients.
 
-### 2. **Age Risk Peak** 📈
-```
-Diseased avg age: 54.4 vs Healthy: 52.8
-Peak risk: 50-60 years
-```
-*Violin plot w/ age slider filter*
-
-### 3. **Chest Pain Predictor** ⚠️ 
-```
-CP Type 3: 88% disease (47/~53)
-CP Type 0: 18% disease (28/~155)
-```
-*Interactive stacked bar chart*
-
-### 4. **Cholesterol Threshold** 🩺
-```
-Diseased avg: 251 vs Healthy: 234
-High variance in healthy group
-```
-*Box plot filterable by gender*
-
-### 5. **ML Model Power** 🎯
-```
-RandomForest: 85.5% accuracy
-Top features: ca(0.18), thal(0.16), cp(0.12), oldpeak(0.11)
-```
-*Live predictor w/ scaling + probability output*
-
-### 6. **Correlation Matrix** 🔗
-```
-Key pairs: thalach (-0.42 vs target), oldpeak (+0.43)
-```
-*Interactive heatmap*
-
-## 📊 **Performance Complete**
-```
-Records: 303 | Filters: 5+ | Viz: 14 | Calc Fields: 6
-Dashboard: Plotly (6 interactive) | ML: 85% | DB: MySQL
-```
-
-## 💡 **Actionable Recommendations**
-1. **High Risk**: Males 50-60 + CP 2-3 + chol >250
-2. **Deploy**: Production Flask predictor for clinics
-3. **Monitor**: Low max HR + high ST depression
-4. **Next**: Add patient time-series + survival analysis
-
-**Live Demo**: http://localhost:5000/dashboard
-
-**All components ✅ - Production ready!**
-
+## 4. Recommendations
+1. Use the model as a **triage aid** to prioritise patients for further cardiac testing, not to diagnose.
+2. Pay attention to asymptomatic patients with exercise-induced ST depression and a low max heart rate.
+3. Validate on another hospital's data before trusting the numbers anywhere else.
