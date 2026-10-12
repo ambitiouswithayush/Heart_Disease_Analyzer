@@ -29,6 +29,25 @@ Key takeaways:
 - **Threshold tuning trades accuracy for safety.** In screening, a missed sick patient is far more costly than an extra test, so the threshold is lowered until recall ≥ 90%. It is chosen from *out-of-fold training predictions*, never from the test set.
 - The test-set ROC-AUC (0.96) is higher than the CV estimate (0.91). With only 61 test patients a single split is noisy, so the **CV figure is the more reliable estimate**.
 
+## Web app
+
+A Flask app with three pages (run `python app.py`, then open http://127.0.0.1:5000).
+
+### 1. Interactive dashboard (`/`)
+Six Plotly charts that update live when you filter by age range, sex and chest pain type, plus the patient count and disease rate for the current filter.
+
+![Dashboard](images/screenshots/dashboard.png)
+
+### 2. Risk predictor (`/predict`)
+Enter a patient's 13 clinical values and get the model's real predicted probability. It is labelled **high risk** when it crosses the recall-tuned threshold (0.31). Inputs are validated against plausible ranges and valid category codes.
+
+![Risk predictor](images/screenshots/predictor.png)
+
+### 3. Model metrics (`/metrics`)
+Cross-validated model comparison, held-out test results at both thresholds, and permutation feature importance, all read from `artifacts/metrics.json`.
+
+![Model metrics](images/screenshots/metrics.png)
+
 ## What makes the pipeline leakage-free
 
 The first version of this project fitted `StandardScaler` on the **whole dataset before** the train/test split, so test-set statistics leaked into training. It is now fixed:
